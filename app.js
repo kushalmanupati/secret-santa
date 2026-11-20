@@ -321,7 +321,6 @@ if (typeof document !== "undefined") (function () {
     document.title = (data.e || "Secret Santa") + " · " + data.g;
   }
   $("rv-btn").addEventListener("click", () => { $("rv-btn").hidden = true; $("rv-lede").hidden = true; $("rv-result").hidden = false; });
-  $("rv-own").addEventListener("click", e => { e.preventDefault(); history.pushState("", "", location.pathname); route(); });
   window.addEventListener("hashchange", route);
 
   renderEvent(); render(); route();
