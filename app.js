@@ -99,6 +99,66 @@ if (typeof document !== "undefined") (function () {
   try { state = Object.assign(fresh(), JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) { state = fresh(); }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
 
+  // ----- reveal tracking (Firestore REST, no SDK) -----
+  // Stores only { drawId, token, time }. Names and matches stay in the links.
+  const FB = window.SANTA_FIREBASE || {};
+  const tracking = !!(FB.apiKey && FB.projectId);
+  const fsBase = () => `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(FB.projectId)}/databases/(default)/documents`;
+
+  function rid(n) {
+    const abc = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const v = crypto.getRandomValues(new Uint8Array(n));
+    return Array.from(v, x => abc[x % abc.length]).join("");
+  }
+
+  function markRevealed(drawId, token) {
+    if (!tracking || !drawId || !token) return;
+    const url = `${fsBase()}/draws/${encodeURIComponent(drawId)}/reveals?documentId=${encodeURIComponent(token)}&key=${encodeURIComponent(FB.apiKey)}`;
+    // A second reveal of the same link is refused by the rules, which is fine.
+    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true,
+      body: JSON.stringify({ fields: { at: { timestampValue: new Date().toISOString() } } }) }).catch(() => {});
+  }
+
+  // Resolves to { token: Date } for everyone who has revealed.
+  async function fetchReveals(drawId) {
+    const out = {};
+    let page = "";
+    do {
+      const url = `${fsBase()}/draws/${encodeURIComponent(drawId)}/reveals?pageSize=300&key=${encodeURIComponent(FB.apiKey)}` + (page ? "&pageToken=" + encodeURIComponent(page) : "");
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const j = await res.json();
+      (j.documents || []).forEach(d => {
+        const t = d.name.split("/").pop();
+        out[t] = new Date((d.fields && d.fields.at && d.fields.at.timestampValue) || d.createTime);
+      });
+      page = j.nextPageToken || "";
+    } while (page);
+    return out;
+  }
+
+  function ago(d) {
+    const s = Math.max(0, (Date.now() - d.getTime()) / 1000);
+    if (s < 60) return "just now";
+    if (s < 3600) return Math.floor(s / 60) + " min ago";
+    if (s < 86400) return Math.floor(s / 3600) + " h ago";
+    return d.toLocaleDateString(undefined, { day: "numeric", month: "short" }) + ", " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+  const pill = at => at ? `<span class="pill done">Revealed</span>` : `<span class="pill wait">Pending</span>`;
+
+  // Poll while a tracking view is on screen.
+  let pollTimer = null;
+  function poll(fn) {
+    clearInterval(pollTimer);
+    if (!fn) return;
+    fn();
+    pollTimer = setInterval(() => { if (!document.hidden) fn(); }, 15000);
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && pollTimer && pollFn) pollFn(); });
+  let pollFn = null;
+  function startPoll(fn) { pollFn = fn; poll(fn); }
+  function stopPoll() { pollFn = null; poll(null); }
+
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const same = (a, b) => a.toLowerCase() === b.toLowerCase();
 
@@ -111,7 +171,12 @@ if (typeof document !== "undefined") (function () {
   function linkFor(giver) {
     const e = state.event;
     const payload = { g: giver, r: state.pairs[giver], e: e.name || "", b: e.budget || "", d: e.date || "" };
+    if (state.drawId && state.tokens && state.tokens[giver]) { payload.i = state.drawId; payload.t = state.tokens[giver]; }
     return location.href.split("#")[0] + "#r=" + encode(payload);
+  }
+  function statusLink() {
+    const payload = { i: state.drawId, e: state.event.name || "", p: state.people.map(p => [p, state.tokens[p]]) };
+    return location.href.split("#")[0] + "#s=" + encode(payload);
   }
 
   async function copy(text, btn, label) {
@@ -171,17 +236,50 @@ if (typeof document !== "undefined") (function () {
     $("no-mutual").checked = !!state.noMutual;
   }
 
+  // A draw made before tracking existed: keep its matches, add tracking IDs.
+  if (state.pairs && !state.drawId) {
+    state.drawId = rid(20);
+    state.tokens = Object.fromEntries(state.people.map(p => [p, rid(12)]));
+    save();
+  }
+
+  let reveals = {};
+  const tracked = () => tracking && !!state.drawId && !!state.tokens;
+
+  function renderLinks() {
+    const t = tracked();
+    $("links").innerHTML = state.people.map(p => {
+      const at = t ? reveals[state.tokens[p]] : null;
+      return `<li><span class="who"><span class="name">${esc(p)}</span>${at ? `<span class="when">Revealed ${esc(ago(at))}</span>` : ""}</span><span class="btns">
+        ${t ? pill(at) : ""}
+        ${navigator.share ? `<button type="button" class="btn ghost small" data-share="${esc(p)}">Share</button>` : ""}
+        <button type="button" class="btn small" data-copy="${esc(p)}">Copy link</button></span></li>`;
+    }).join("");
+    if (t) {
+      const n = state.people.filter(p => reveals[state.tokens[p]]).length;
+      $("progress").innerHTML = `<b>${n} of ${state.people.length}</b> have revealed their match`;
+    }
+  }
+
+  async function refreshOrganizer() {
+    if (!tracked() || !state.pairs) return;
+    try { reveals = await fetchReveals(state.drawId); renderLinks(); } catch (e) {}
+  }
+
   function renderResults() {
     const has = !!state.pairs;
     $("results").hidden = !has;
     $("draw").textContent = has ? "Draw new names" : "Draw names";
     $("draw").disabled = state.people.length < 3;
-    if (!has) return;
-    $("links").innerHTML = state.people.map(p => `<li><span class="name">${esc(p)}</span><span class="btns">
-      ${navigator.share ? `<button type="button" class="btn ghost small" data-share="${esc(p)}">Share</button>` : ""}
-      <button type="button" class="btn small" data-copy="${esc(p)}">Copy link</button></span></li>`).join("");
+    if (!has) { stopPoll(); return; }
+    const t = tracked();
+    $("progress").hidden = !t;
+    $("status-box").hidden = !t;
+    if (t) $("status-open").href = statusLink();
+    renderLinks();
     $("pairs").innerHTML = state.people.map(p =>
       `<li><span><b>${esc(p)}</b> <span class="muted">→</span> ${esc(state.pairs[p])}</span></li>`).join("");
+    if (t && pollFn !== refreshOrganizer && !location.hash) startPoll(refreshOrganizer);
   }
 
   function renderEvent() {
@@ -261,7 +359,15 @@ if (typeof document !== "undefined") (function () {
     const res = solve(state.people, state.rules, state.noMutual);
     const msg = $("draw-msg");
     if (res.error) { state.pairs = null; msg.className = "msg error"; msg.textContent = res.error; }
-    else { state.pairs = res.pairs; msg.className = "msg"; msg.textContent = ""; $("pairs").hidden = true; $("peek").textContent = "Show all matches"; }
+    else {
+      state.pairs = res.pairs;
+      state.drawId = rid(20);
+      state.tokens = Object.fromEntries(state.people.map(p => [p, rid(12)]));
+      reveals = {};
+      msg.className = "msg"; msg.textContent = "";
+      $("pairs").hidden = true; $("peek").textContent = "Show all matches";
+    }
+    stopPoll();
     save(); render();
     if (!res.error) $("results").scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -278,6 +384,7 @@ if (typeof document !== "undefined") (function () {
     const text = state.people.map(p => `${p}: ${linkFor(p)}`).join("\n");
     copy(text, e.currentTarget, "Copy all links");
   });
+  $("status-copy").addEventListener("click", e => copy(statusLink(), e.currentTarget, "Copy link"));
   $("peek").addEventListener("click", e => {
     const p = $("pairs");
     p.hidden = !p.hidden;
@@ -298,14 +405,46 @@ if (typeof document !== "undefined") (function () {
   });
 
   // ----- participant reveal -----
+  let revealData = null;
+
+  function routeStatus(code) {
+    let data = null;
+    try { data = decode(code); } catch (e) {}
+    const ok = data && typeof data.i === "string" && Array.isArray(data.p);
+    $("st-event").textContent = (data && data.e) || "Secret Santa";
+    document.title = "Who's revealed · " + ((data && data.e) || "Secret Santa");
+    const err = $("st-error");
+    if (!ok) { $("st-summary").textContent = "This status link looks broken."; $("st-list").innerHTML = ""; return; }
+    if (!tracking) { $("st-summary").textContent = "Reveal tracking isn't set up on this site."; return; }
+    const draw = rs => {
+      const n = data.p.filter(([, t]) => rs[t]).length;
+      $("st-summary").textContent = n === data.p.length ? `Everyone has revealed their match. 🎄` : `${n} of ${data.p.length} have revealed their match.`;
+      const rows = data.p.slice().sort((a, b) => (!!rs[b[1]] - !!rs[a[1]]) || a[0].localeCompare(b[0]));
+      $("st-list").innerHTML = rows.map(([name, t]) => `<li><span class="who"><span class="name">${esc(name)}</span>${rs[t] ? `<span class="when">${esc(ago(rs[t]))}</span>` : ""}</span>${pill(rs[t])}</li>`).join("");
+    };
+    draw({});
+    startPoll(async () => {
+      try {
+        const rs = await fetchReveals(data.i);
+        err.hidden = true; draw(rs);
+        $("st-updated").textContent = "Updates every 15 seconds · last checked " + new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+      } catch (e) { err.hidden = false; err.textContent = "Couldn't reach the server. Retrying…"; }
+    });
+  }
+
   function route() {
+    const s = location.hash.match(/^#s=([\w-]+)$/);
     const m = location.hash.match(/^#r=([\w-]+)$/);
-    $("setup-view").hidden = !!m;
+    $("setup-view").hidden = !!(m || s);
     $("reveal-view").hidden = !m;
-    if (!m) { document.title = "Secret Santa"; return; }
+    $("status-view").hidden = !s;
+    stopPoll();
+    if (s) return routeStatus(s[1]);
+    if (!m) { document.title = "Secret Santa"; renderResults(); return; }
     let data = null;
     try { data = decode(m[1]); } catch (e) {}
     const ok = data && typeof data.g === "string" && typeof data.r === "string";
+    revealData = ok ? data : null;
     $("rv-error").hidden = ok;
     $("rv-btn").hidden = !ok;
     $("rv-lede").hidden = !ok;
@@ -320,7 +459,10 @@ if (typeof document !== "undefined") (function () {
     $("rv-meta").innerHTML = meta.join("");
     document.title = (data.e || "Secret Santa") + " · " + data.g;
   }
-  $("rv-btn").addEventListener("click", () => { $("rv-btn").hidden = true; $("rv-lede").hidden = true; $("rv-result").hidden = false; });
+  $("rv-btn").addEventListener("click", () => {
+    $("rv-btn").hidden = true; $("rv-lede").hidden = true; $("rv-result").hidden = false;
+    if (revealData) markRevealed(revealData.i, revealData.t);
+  });
   window.addEventListener("hashchange", route);
 
   renderEvent(); render(); route();
