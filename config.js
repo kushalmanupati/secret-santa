@@ -2,6 +2,6 @@
 // what the database allows is controlled by the Firestore rules (see README).
 // Leave apiKey empty to turn tracking off.
 window.SANTA_FIREBASE = {
-  apiKey: "",
-  projectId: ""
+  apiKey: "AIzaSyAItsAEGLztMllxgFsDg1260Be6WQClGwI",
+  projectId: "secret-santa-2983d"
 };
