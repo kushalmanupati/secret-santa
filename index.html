@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Secret Santa</title>
+  <meta name="description" content="Draw Secret Santa matches with rules for who shouldn't be paired, and share a private link with each person.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎁</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="wrap">
+
+    <!-- Organizer view -->
+    <section id="setup-view">
+      <header class="top">
+        <h1>Secret Santa</h1>
+        <p class="lede">Add your friends, set who shouldn't be matched, and draw. Everyone gets a private link that shows only their own match.</p>
+      </header>
+
+      <div class="card">
+        <h2>Event <span class="opt">optional</span></h2>
+        <div class="grid3">
+          <label class="field">
+            <span>Name</span>
+            <input id="ev-name" type="text" placeholder="Christmas 2026" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Budget</span>
+            <input id="ev-budget" type="text" placeholder="SGD 50" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Exchange date</span>
+            <input id="ev-date" type="date">
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>People</h2>
+          <span class="count" id="people-count"></span>
+        </div>
+        <form id="add-person" class="row" autocomplete="off">
+          <input id="person-name" type="text" placeholder="Add a name, or paste a list" aria-label="Name">
+          <button type="submit" class="btn">Add</button>
+        </form>
+        <ul id="people" class="chips" aria-live="polite"></ul>
+        <p id="people-empty" class="hint">Add at least three people. You can paste several names separated by commas or new lines.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Who shouldn't be matched</h2>
+          <span class="count" id="rules-count"></span>
+        </div>
+        <form id="add-rule" class="rule-form" autocomplete="off">
+          <select id="rule-a" aria-label="First person"></select>
+          <span class="rule-mid" id="rule-mid">won't get</span>
+          <select id="rule-b" aria-label="Second person"></select>
+          <button type="submit" class="btn">Add rule</button>
+        </form>
+        <label class="check">
+          <input type="checkbox" id="rule-both" checked>
+          <span>Both ways, so neither draws the other (good for couples)</span>
+        </label>
+        <ul id="rules" class="rules"></ul>
+        <hr>
+        <label class="check">
+          <input type="checkbox" id="no-mutual">
+          <span>Don't let two people draw each other</span>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button id="draw" class="btn primary big" disabled>Draw names</button>
+        <p id="draw-msg" class="msg" role="status"></p>
+      </div>
+
+      <div class="card" id="results" hidden>
+        <div class="card-head">
+          <h2>Matches are ready</h2>
+          <button id="redraw" class="btn ghost small">Draw again</button>
+        </div>
+        <p class="hint">Send each person their own link. It only shows who <em>they</em> are buying for, so you can stay in the dark too.</p>
+        <ul id="links" class="links"></ul>
+        <div class="row wrap-row">
+          <button id="copy-all" class="btn ghost">Copy all links</button>
+          <button id="peek" class="btn ghost">Show all matches</button>
+        </div>
+        <ul id="pairs" class="pairs" hidden></ul>
+        <p class="fine">The links hide each match from a quick glance, but they aren't encrypted. Someone determined could decode their link to read it.</p>
+      </div>
+
+      <footer class="foot">
+        <button id="reset" class="link-btn">Start over</button>
+        <span>Everything stays in this browser. Nothing is uploaded.</span>
+      </footer>
+    </section>
+
+    <!-- Participant view -->
+    <section id="reveal-view" hidden>
+      <div class="reveal card">
+        <p class="eyebrow" id="rv-event">Secret Santa</p>
+        <h1 id="rv-hello">Hi!</h1>
+        <p class="lede" id="rv-lede">Your match is ready. Make sure nobody is looking over your shoulder.</p>
+        <button id="rv-btn" class="btn primary big">Reveal my match</button>
+        <div id="rv-result" hidden>
+          <p class="rv-label">You're buying a gift for</p>
+          <p class="rv-name" id="rv-name"></p>
+          <dl class="rv-meta" id="rv-meta"></dl>
+          <p class="hint">Keep it secret!</p>
+        </div>
+        <p id="rv-error" class="msg error" hidden>This link looks broken. Ask your organizer to send it again.</p>
+      </div>
+      <p class="foot center"><a href="./" id="rv-own">Organize your own Secret Santa</a></p>
+    </section>
+
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
