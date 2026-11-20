@@ -83,10 +83,21 @@
           <button id="redraw" class="btn ghost small">Draw again</button>
         </div>
         <p class="hint">Send each person their own link. It only shows who <em>they</em> are buying for, so you can stay in the dark too.</p>
+        <p class="progress" id="progress" hidden></p>
         <ul id="links" class="links"></ul>
         <div class="row wrap-row">
           <button id="copy-all" class="btn ghost">Copy all links</button>
           <button id="peek" class="btn ghost">Show all matches</button>
+        </div>
+        <div class="status-box" id="status-box" hidden>
+          <div>
+            <h3>Status page</h3>
+            <p class="hint">Shows who has revealed and who's pending, never the matches. Safe to share with the group.</p>
+          </div>
+          <div class="row">
+            <a class="btn ghost small" id="status-open" target="_blank" rel="noopener">Open</a>
+            <button id="status-copy" class="btn small">Copy link</button>
+          </div>
         </div>
         <ul id="pairs" class="pairs" hidden></ul>
         <p class="fine">The links hide each match from a quick glance, but they aren't encrypted. Someone determined could decode their link to read it.</p>
@@ -115,7 +126,22 @@
       </div>
     </section>
 
+    <!-- Group status view -->
+    <section id="status-view" hidden>
+      <header class="top">
+        <p class="eyebrow" id="st-event">Secret Santa</p>
+        <h1>Who's revealed</h1>
+        <p class="lede" id="st-summary">Checking…</p>
+      </header>
+      <div class="card">
+        <ul id="st-list" class="links"></ul>
+        <p id="st-error" class="msg error" hidden></p>
+      </div>
+      <p class="foot center"><span id="st-updated"></span></p>
+    </section>
+
   </main>
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
