@@ -137,6 +137,32 @@ if (typeof document !== "undefined") (function () {
     return out;
   }
 
+  // Wishlists: draws/{drawId}/wishes/{key}, key = first 32 hex chars of
+  // sha256(drawId + ":" + lowercase name), so the giver can find the receiver's.
+  async function wishKey(drawId, name) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(drawId + ":" + name.trim().toLowerCase()));
+    return Array.from(new Uint8Array(buf)).slice(0, 16).map(x => x.toString(16).padStart(2, "0")).join("");
+  }
+  async function loadWishes(drawId, name) {
+    const k = await wishKey(drawId, name);
+    const res = await fetch(`${fsBase()}/draws/${encodeURIComponent(drawId)}/wishes/${k}?key=${encodeURIComponent(FB.apiKey)}`, { cache: "no-store" });
+    if (res.status === 404) return [];
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const j = await res.json();
+    const vals = (j.fields && j.fields.items && j.fields.items.arrayValue && j.fields.items.arrayValue.values) || [];
+    return vals.map(v => v.stringValue).filter(Boolean);
+  }
+  async function saveWishes(drawId, name, items) {
+    const k = await wishKey(drawId, name);
+    const body = { fields: {
+      items: { arrayValue: items.length ? { values: items.map(s => ({ stringValue: s })) } : {} },
+      at: { timestampValue: new Date().toISOString() }
+    } };
+    const res = await fetch(`${fsBase()}/draws/${encodeURIComponent(drawId)}/wishes/${k}?key=${encodeURIComponent(FB.apiKey)}`,
+      { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+  }
+
   function ago(d) {
     const s = Math.max(0, (Date.now() - d.getTime()) / 1000);
     if (s < 60) return "just now";
@@ -457,11 +483,65 @@ if (typeof document !== "undefined") (function () {
     if (data.b) meta.push(`<div><dt>Budget</dt><dd>${esc(data.b)}</dd></div>`);
     if (data.d) meta.push(`<div><dt>Exchange</dt><dd>${esc(fmtDate(data.d))}</dd></div>`);
     $("rv-meta").innerHTML = meta.join("");
+
+    // Own wishlist: shown when this link belongs to a tracked draw.
+    const wishes = tracking && !!data.i;
+    $("wish-form").hidden = !wishes;
+    $("rv-wish").hidden = true;
+    $("wish-msg").textContent = ""; $("wish-msg").className = "wish-msg";
+    if (wishes) {
+      $("wish-1").value = ""; $("wish-2").value = "";
+      $("wish-save").textContent = "Save wishlist";
+      loadWishes(data.i, data.g).then(items => {
+        if (revealData !== data) return;
+        $("wish-1").value = items[0] || ""; $("wish-2").value = items[1] || "";
+        if (items.length) { $("wish-save").textContent = "Update wishlist"; }
+      }).catch(() => {});
+    }
     document.title = (data.e || "Secret Santa") + " · " + data.g;
   }
   $("rv-btn").addEventListener("click", () => {
     $("rv-btn").hidden = true; $("rv-lede").hidden = true; $("rv-result").hidden = false;
-    if (revealData) markRevealed(revealData.i, revealData.t);
+    const data = revealData;
+    if (!data) return;
+    markRevealed(data.i, data.t);
+    if (!(tracking && data.i)) return;
+    // Show the match's wishlist, checking again until they've added one.
+    $("rv-wish").hidden = false;
+    $("rv-wish-title").textContent = `${data.r}'s wishlist`;
+    $("rv-wish-list").innerHTML = "";
+    $("rv-wish-empty").hidden = false;
+    $("rv-wish-empty").textContent = "Loading…";
+    startPoll(async () => {
+      try {
+        const items = await loadWishes(data.i, data.r);
+        if (revealData !== data) return;
+        $("rv-wish-list").innerHTML = items.map(s => `<li>${esc(s)}</li>`).join("");
+        $("rv-wish-list").hidden = !items.length;
+        $("rv-wish-empty").hidden = !!items.length;
+        $("rv-wish-empty").textContent = `${data.r} hasn't added a wishlist yet. This updates on its own, so check back later.`;
+      } catch (e) {
+        $("rv-wish-empty").textContent = "Couldn't load the wishlist. Retrying…";
+      }
+    });
+  });
+
+  $("wish-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const data = revealData;
+    if (!data || !data.i) return;
+    const items = [$("wish-1").value, $("wish-2").value].map(s => s.trim().replace(/\s+/g, " ").slice(0, 120)).filter(Boolean);
+    const msg = $("wish-msg"), btn = $("wish-save");
+    btn.disabled = true; msg.className = "wish-msg"; msg.textContent = "Saving…";
+    try {
+      await saveWishes(data.i, data.g, items);
+      msg.className = "wish-msg ok";
+      msg.textContent = items.length ? "Saved. Your Secret Santa will see it." : "Wishlist cleared.";
+      btn.textContent = items.length ? "Update wishlist" : "Save wishlist";
+    } catch (err) {
+      msg.className = "wish-msg err"; msg.textContent = "Couldn't save. Please try again.";
+    }
+    btn.disabled = false;
   });
   window.addEventListener("hashchange", route);
 
