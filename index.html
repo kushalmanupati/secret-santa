@@ -114,11 +114,28 @@
       <div class="reveal card">
         <p class="eyebrow" id="rv-event">Secret Santa</p>
         <h1 id="rv-hello">Hi!</h1>
+
+        <form class="wish" id="wish-form" hidden autocomplete="off">
+          <h2>Your wishlist</h2>
+          <p class="hint">Up to two gift ideas for whoever draws you. You can change them any time.</p>
+          <input id="wish-1" type="text" maxlength="120" placeholder="Gift idea 1" aria-label="Gift idea 1">
+          <input id="wish-2" type="text" maxlength="120" placeholder="Gift idea 2 (optional)" aria-label="Gift idea 2">
+          <div class="wish-row">
+            <button type="submit" class="btn" id="wish-save">Save wishlist</button>
+            <span class="wish-msg" id="wish-msg" role="status"></span>
+          </div>
+        </form>
+
         <p class="lede" id="rv-lede">Your match is ready. Make sure nobody is looking over your shoulder.</p>
         <button id="rv-btn" class="btn primary big">Reveal my match</button>
         <div id="rv-result" hidden>
           <p class="rv-label">You're buying a gift for</p>
           <p class="rv-name" id="rv-name"></p>
+          <div class="their-wish" id="rv-wish" hidden>
+            <p class="rv-label" id="rv-wish-title">Their wishlist</p>
+            <ol id="rv-wish-list"></ol>
+            <p class="hint" id="rv-wish-empty" hidden></p>
+          </div>
           <dl class="rv-meta" id="rv-meta"></dl>
           <p class="hint">Keep it secret!</p>
         </div>
