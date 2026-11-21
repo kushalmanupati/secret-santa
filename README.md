@@ -27,9 +27,25 @@ service cloud.firestore {
                     && request.resource.data.at is timestamp;
       allow update, delete: if false;
     }
+    match /draws/{drawId}/wishes/{key} {
+      function valid() {
+        let d = request.resource.data;
+        return drawId.size() >= 16 && drawId.size() <= 40 && key.size() == 32
+          && d.keys().hasOnly(['items', 'at']) && d.at is timestamp
+          && d.items is list && d.items.size() <= 2
+          && (d.items.size() < 1 || (d.items[0] is string && d.items[0].size() <= 120))
+          && (d.items.size() < 2 || (d.items[1] is string && d.items[1].size() <= 120));
+      }
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if valid();
+      allow delete: if false;
+    }
   }
 }
 ```
+
+Wishlists are stored under a key derived from the draw ID and the person's name, so the person drawing them can look them up. They contain only the gift ideas, never names or matches.
 
 ## Run locally
 
